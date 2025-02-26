@@ -89,7 +89,7 @@ class Projector:
             valid_mask = self.dem_data != self.raster.nodata
             logger.info(f"Memory usage after computing valid mask: {get_memory_usage():.2f} MB")
             logger.info("Computing min_z")
-            self.min_z = self.dem_data[valid_mask].min()
+            self.min_z = np.nanmin(np.where(self.dem_data != self.raster.nodata, self.dem_data, np.nan))
             logger.info(f"Memory usage after computing min_z: {get_memory_usage():.2f} MB")
             if self.z_fill_nodata:
                 logger.info("Filling nodata values. Running ndimage.distance_transform_edt")
