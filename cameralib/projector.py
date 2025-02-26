@@ -83,14 +83,14 @@ class Projector:
             self.raster = rasterio.open(self.dem_path, "r")
             logger.info(f"Memory usage after opening DEM: {get_memory_usage():.2f} MB")
             logger.info("Reading DEM with self.raster.read(1)")
-            self.dem_data = self.raster.read(1, out_dtype=np.uint16)
+            self.dem_data = self.raster.read(1)
             logger.info(f"Dtype after reading: {self.dem_data.dtype}")
             logger.info(f"Memory usage after reading DEM: {get_memory_usage():.2f} MB")
             logger.info("Computing valid mask")
             valid_mask = self.dem_data != self.raster.nodata
             logger.info(f"Memory usage after computing valid mask: {get_memory_usage():.2f} MB")
             logger.info("Computing min_z")
-            self.min_z = np.nanmin(np.where(self.dem_data != self.raster.nodata, self.dem_data, np.nan))
+            self.min_z = self.dem_data[valid_mask].min()
             logger.info(f"Memory usage after computing min_z: {get_memory_usage():.2f} MB")
             if self.z_fill_nodata:
                 logger.info("Filling nodata values. Running ndimage.distance_transform_edt")
