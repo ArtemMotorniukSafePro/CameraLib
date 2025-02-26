@@ -1,20 +1,20 @@
-import os
 import json
-import numpy as np
-from scipy import ndimage
-import rasterio
 import logging
-from cameralib.geo import get_utm_xyz, get_latlon, raster_sample_z
-from cameralib.camera import load_shots, load_cameras, map_pixels
-from cameralib.exceptions import *
+import numpy as np
+import os
+import rasterio
+from scipy import ndimage
 
+from cameralib.camera import load_cameras, load_shots, map_pixels
+from cameralib.exceptions import *
+from cameralib.geo import get_latlon, get_utm_xyz, raster_sample_z
 
 logger = logging.getLogger(__name__)
 
 
 class Projector:
     """A projector to perform camera coordinates operations on ODM datasets
-    
+
     Args:
         project_path (str): Path to ODM project
         z_sample_window (int): Size of the window to use when sampling elevation values
@@ -24,10 +24,20 @@ class Projector:
         raycast_resolution_multiplier (float): Value that affects the ray sampling resolution. Lower values can lead to slightly more precise results, but increase processing time.
         dem_path (str): Manually set a path to a valid GeoTIFF DEM for sampling Z values instead of using the default.
     """
-    def __init__(self, project_path, z_sample_window=1, z_sample_strategy='median', z_sample_target='dsm', z_fill_nodata=True, raycast_resolution_multiplier=0.7071, dem_path=None):
+
+    def __init__(
+        self,
+        project_path,
+        z_sample_window=1,
+        z_sample_strategy="median",
+        z_sample_target="dsm",
+        z_fill_nodata=True,
+        raycast_resolution_multiplier=0.7071,
+        dem_path=None,
+    ):
         if not os.path.isdir(project_path):
             raise IOError(f"{project_path} is not a valid path to an ODM project")
-        
+
         self.project_path = project_path
         self.z_sample_window = z_sample_window
         self.z_sample_strategy = z_sample_strategy
@@ -43,9 +53,9 @@ class Projector:
         if dem_path is not None:
             self.dem_path = dem_path
         else:
-            if z_sample_target == 'dsm':
+            if z_sample_target == "dsm":
                 self.dem_path = self.dsm_path
-            elif z_sample_target == 'dtm':
+            elif z_sample_target == "dtm":
                 self.dem_path = self.dtm_path
             else:
                 raise InvalidArgError(f"Invalid z_sample_target {z_sample_target}")
@@ -64,17 +74,21 @@ class Projector:
         self.raster = None
         self.dem_data = None
         self.min_z = None
-    
+
     def _read_dem(self):
         if self.raster is None:
-            self.raster = rasterio.open(self.dem_path, 'r')
+            logger.info(f"Opening DEM {self.dem_path}")
+            self.raster = rasterio.open(self.dem_path, "r")
+            logger.info("Reading DEM with self.raster.read(1)")
             self.dem_data = self.raster.read(1)
-            valid_mask = self.dem_data!=self.raster.nodata
+            logger.info("Computing valid mask")
+            valid_mask = self.dem_data != self.raster.nodata
+            logger.info("Computing min_z")
             self.min_z = self.dem_data[valid_mask].min()
             if self.z_fill_nodata:
-                indices = ndimage.distance_transform_edt(~valid_mask, 
-                                                    return_distances=False, 
-                                                    return_indices=True)
+                logger.info("Filling nodata values. Running ndimage.distance_transform_edt")
+                indices = ndimage.distance_transform_edt(~valid_mask, return_distances=False, return_indices=True)
+                logger.info("Filling nodata values. Applying indices to dem_data")
                 self.dem_data = self.dem_data[tuple(indices)]
 
     def __del__(self):
@@ -84,12 +98,12 @@ class Projector:
 
     def cam2world(self, image, coordinates, normalized=False):
         """Project 2D pixel coordinates in camera space to geographic coordinates
-        
+
         Args:
             image (str): image filename
             coordinates (list of tuples): x,y pixel coordinates
             normalized (bool): whether the input coordinates are normalized to [0..1]
-        
+
         Returns:
             list of tuples: longitude,latitude,elevation for each coordinate pair
         """
@@ -97,19 +111,19 @@ class Projector:
             raise InvalidArgError(f"Image {image} not found in {self.shots_path}")
 
         s = self.shots[self.shots_map[image]]
-        cam_id = s['cam_id'].replace("v2 ", "")
+        cam_id = s["cam_id"].replace("v2 ", "")
         cam = self.cameras[cam_id]
 
         self._read_dem()
 
-        r = s['rotation']
-        focal = s['focal']
-        img_w = s['width']
-        img_h = s['height']
+        r = s["rotation"]
+        focal = s["focal"]
+        img_w = s["width"]
+        img_h = s["height"]
         if normalized:
             coordinates *= np.array([img_w, img_h])
 
-        t = s['translation'].reshape(3, 1)
+        t = s["translation"].reshape(3, 1)
         resolution_step = abs(self.raster.transform[0]) * self.raycast_resolution_multiplier
 
         rays_cam = cam.pixel_bearing_many(np.array(coordinates)).T
@@ -122,8 +136,8 @@ class Projector:
             if float(ray_world[2]) > 0:
                 logger.warning(f"Ray from {image} pointing up, cannot raycast")
                 continue
-        
-            step = 0 # meters
+
+            step = 0  # meters
             prev_pt = None
             result = None
 
@@ -134,11 +148,18 @@ class Projector:
                 # No hits
                 if ray_pt[2] < self.min_z:
                     break
-                
+
                 y, x = self.raster.index(ray_pt[0], ray_pt[1], op=round)
 
                 if x >= 0 and x < self.dem_data.shape[1] and y >= 0 and y < self.dem_data.shape[0]:
-                    pix_z = raster_sample_z(self.dem_data, self.raster.nodata, y, x, window=self.z_sample_window, strategy=self.z_sample_strategy)
+                    pix_z = raster_sample_z(
+                        self.dem_data,
+                        self.raster.nodata,
+                        y,
+                        x,
+                        window=self.z_sample_window,
+                        strategy=self.z_sample_strategy,
+                    )
 
                     if pix_z == self.raster.nodata:
                         continue
@@ -150,60 +171,53 @@ class Projector:
                         # Hit
                         midpoint = (prev_pt + ray_pt) / 2.0
                         lat, lon = get_latlon(self.raster, midpoint[0], midpoint[1])
-                        result = (lat,lon,pix_z)
+                        result = (lat, lon, pix_z)
                         break
 
                     prev_pt = ray_pt
-            
+
             results.append(result)
 
         return results
-                        
 
     def cam2geoJSON(self, image, coordinates, properties={}, normalized=False):
         """Project 2D pixel coordinates in camera space to geographic coordinates and output the result
         as GeoJSON. A single coordinate results in a Point, two coordinates into a LineString and more than two into a Polygon.
-        
+
         Args:
             image (str): image filename
             coordinates (list of tuples): x,y pixel coordinates
             normalized (bool): whether the input coordinates are normalized to [0..1]
-        
+
         Returns:
             dict: GeoJSON
         """
         results = self.cam2world(image, coordinates, normalized)
 
-        if 'image' not in properties:
-            properties['image'] = image
-        
+        if "image" not in properties:
+            properties["image"] = image
+
         if len(results) == 1:
-            geom = 'Point'
-            lat,lon,z = results[0]
-            coords = [lon,lat,z]
+            geom = "Point"
+            lat, lon, z = results[0]
+            coords = [lon, lat, z]
         elif len(results) == 2:
-            geom = 'LineString'
-            coords = list([lon,lat,z] for lat,lon,z in results)
+            geom = "LineString"
+            coords = list([lon, lat, z] for lat, lon, z in results)
         else:
-            geom = 'Polygon'
-            coords = [list([lon,lat,z] for lat,lon,z in results)]
+            geom = "Polygon"
+            coords = [list([lon, lat, z] for lat, lon, z in results)]
             coords[0].append(coords[0][0])
 
         j = {
-            'type': 'FeatureCollection',
-            'features':[{
-                'type': 'Feature',
-                'properties': properties,
-                'geometry': {
-                    'coordinates': coords,
-                    'type': geom
-                }
-            }]
+            "type": "FeatureCollection",
+            "features": [
+                {"type": "Feature", "properties": properties, "geometry": {"coordinates": coords, "type": geom}}
+            ],
         }
-        
+
         return j
 
-    
     def world2cams(self, longitude, latitude, normalized=False):
         """Find which cameras in the reconstruction see a particular location.
 
@@ -220,20 +234,26 @@ class Projector:
 
                     'x': float          # The x-coordinate in camera space
 
-                    'y': float          # The y-coordinate in camera space 
+                    'y': float          # The y-coordinate in camera space
                 }
             ]
         """
         self._read_dem()
-        Xa, Ya, Za = get_utm_xyz(self.raster, self.dem_data, self.dem_nodata, longitude, latitude, 
-                                    z_sample_window=self.z_sample_window,
-                                    z_sample_strategy=self.z_sample_strategy)
+        Xa, Ya, Za = get_utm_xyz(
+            self.raster,
+            self.dem_data,
+            self.dem_nodata,
+            longitude,
+            latitude,
+            z_sample_window=self.z_sample_window,
+            z_sample_strategy=self.z_sample_strategy,
+        )
         if Za == self.dem_nodata:
             return []
-        
+
         images = []
         for s in self.shots:
-            r = s['rotation']
+            r = s["rotation"]
             a1 = r[0][0]
             b1 = r[0][1]
             c1 = r[0][2]
@@ -244,29 +264,27 @@ class Projector:
             b3 = r[2][1]
             c3 = r[2][2]
 
-            cam_id = s['cam_id'].replace("v2 ", "")
-            focal = s['focal']
-            img_w = s['width']
-            img_h = s['height']
-            Xs, Ys, Zs = s['translation']
+            cam_id = s["cam_id"].replace("v2 ", "")
+            focal = s["focal"]
+            img_w = s["width"]
+            img_h = s["height"]
+            Xs, Ys, Zs = s["translation"]
 
             half_img_w = (img_w - 1) / 2.0
             half_img_h = (img_h - 1) / 2.0
             f = focal * max(img_w, img_h)
 
-            dx = (Xa - Xs)
-            dy = (Ya - Ys)
-            dz = (Za - Zs)
+            dx = Xa - Xs
+            dy = Ya - Ys
+            dz = Za - Zs
 
             den = a3 * dx + b3 * dy + c3 * dz
             x = half_img_w - (f * (a1 * dx + b1 * dy + c1 * dz) / den)
             y = half_img_h - (f * (a2 * dx + b2 * dy + c2 * dz) / den)
 
             if x >= 0 and y >= 0 and x <= img_w - 1 and y <= img_h - 1:
-                valid = True # assumed
-                result = {
-                    'filename': s['filename']
-                }
+                valid = True  # assumed
+                result = {"filename": s["filename"]}
                 if cam_id is not None and cam_id in self.cameras:
                     cam = self.cameras[cam_id]
 
@@ -278,12 +296,12 @@ class Projector:
 
                     valid = xu >= 0 and xu <= img_w and yu >= 0 and yu <= img_h
 
-                    result['x'] = float(xu)
-                    result['y'] = float(yu)
+                    result["x"] = float(xu)
+                    result["y"] = float(yu)
                     if normalized:
-                        result['x'] /= img_w
-                        result['y'] /= img_h
-                
+                        result["x"] /= img_w
+                        result["y"] /= img_h
+
                 if valid:
                     images.append(result)
 
