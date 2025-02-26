@@ -8,6 +8,7 @@ from scipy import ndimage
 from cameralib.camera import load_cameras, load_shots, map_pixels
 from cameralib.exceptions import *
 from cameralib.geo import get_latlon, get_utm_xyz, raster_sample_z
+from cameralib.utils import get_memory_usage
 
 logger = logging.getLogger(__name__)
 
@@ -77,19 +78,26 @@ class Projector:
 
     def _read_dem(self):
         if self.raster is None:
+            logger.info(f"Initial memory usage: {get_memory_usage():.2f} MB")
             logger.info(f"Opening DEM {self.dem_path}")
             self.raster = rasterio.open(self.dem_path, "r")
+            logger.info(f"Memory usage after opening DEM: {get_memory_usage():.2f} MB")
             logger.info("Reading DEM with self.raster.read(1)")
             self.dem_data = self.raster.read(1)
+            logger.info(f"Memory usage after reading DEM: {get_memory_usage():.2f} MB")
             logger.info("Computing valid mask")
             valid_mask = self.dem_data != self.raster.nodata
+            logger.info(f"Memory usage after computing valid mask: {get_memory_usage():.2f} MB")
             logger.info("Computing min_z")
             self.min_z = self.dem_data[valid_mask].min()
+            logger.info(f"Memory usage after computing min_z: {get_memory_usage():.2f} MB")
             if self.z_fill_nodata:
                 logger.info("Filling nodata values. Running ndimage.distance_transform_edt")
                 indices = ndimage.distance_transform_edt(~valid_mask, return_distances=False, return_indices=True)
+                logger.info(f"Memory usage after running ndimage.distance_transform_edt: {get_memory_usage():.2f} MB")
                 logger.info("Filling nodata values. Applying indices to dem_data")
                 self.dem_data = self.dem_data[tuple(indices)]
+                logger.info(f"Memory usage after applying indices to dem_data: {get_memory_usage():.2f} MB")
 
     def __del__(self):
         if self.raster is not None:

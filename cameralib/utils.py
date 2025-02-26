@@ -1,19 +1,19 @@
-import json
-import os
 import glob
+import json
 import logging
+import os
+import psutil
 from pathlib import Path
-
 
 logger = logging.getLogger(__name__)
 
 
 def read_xanylabeling_annotations(labels_dir):
     """Read an annotation file generated with X-AnyLabeling (https://github.com/CVHub520/X-AnyLabeling)
-    
+
     Args:
         labels_dir (str): Path to a directory containing X-AnyLabeling labels
-    
+
     Returns:
         list of dict: a list containing dictionaries with the following information
         [
@@ -32,28 +32,29 @@ def read_xanylabeling_annotations(labels_dir):
     annotations = []
 
     for fi in files:
-        with open(fi, 'r') as f:
+        with open(fi, "r") as f:
             j = json.load(f)
-    
-        annotations += [{
-                'image': os.path.basename(j['imagePath']),
-                'coordinates': s['points'],
-                'properties': {
-                    'label': s.get('label')
-                },
-                'normalized': False,
-            }for s in j['shapes']]
-    
+
+        annotations += [
+            {
+                "image": os.path.basename(j["imagePath"]),
+                "coordinates": s["points"],
+                "properties": {"label": s.get("label")},
+                "normalized": False,
+            }
+            for s in j["shapes"]
+        ]
+
     return annotations
 
 
-def read_yolov7_annotations(labels_dir, image_suffix='.JPG'):
+def read_yolov7_annotations(labels_dir, image_suffix=".JPG"):
     """Read an annotation directory in Yolov7 format
-    
+
     Args:
         dir (str): Path to a directory containing Yolov7 labels
         image_suffix (str): Extension of the target images
-    
+
     Returns:
         list of dict: a list containing dictionaries with the following information
         [
@@ -73,8 +74,8 @@ def read_yolov7_annotations(labels_dir, image_suffix='.JPG'):
     annotations = []
 
     for fi in files:
-        with open(fi, 'r') as f:
-            lines = [l for l in f.read().split("\n") if l.strip() != ""]  
+        with open(fi, "r") as f:
+            lines = [l for l in f.read().split("\n") if l.strip() != ""]
             for line in lines:
                 parts = line.split(" ")
                 if len(parts) == 5:
@@ -82,31 +83,41 @@ def read_yolov7_annotations(labels_dir, image_suffix='.JPG'):
                         label, x_center, y_center, width, height = [float(p) for p in parts]
                         xmin = x_center - width / 2.0
                         ymin = y_center - height / 2.0
-                        annotations.append({
-                            'image': Path(fi).with_suffix(image_suffix).name,
-                            'label': label,
-                            'bbox': {
-                                'xmin': xmin,
-                                'xmax': xmin + width,
-                                'ymin': ymin,
-                                'ymax': ymin + height
+                        annotations.append(
+                            {
+                                "image": Path(fi).with_suffix(image_suffix).name,
+                                "label": label,
+                                "bbox": {"xmin": xmin, "xmax": xmin + width, "ymin": ymin, "ymax": ymin + height},
                             }
-                        })
+                        )
                     except ValueError as e:
                         logger.warning(f"Cannot parse values in {line} ({fi})")
                 else:
                     logger.warning(f"Cannot parse line {line} ({fi})")
-        
-    return [{
-            'image': a['image'],
-            'coordinates': [
-                            [a['bbox']['xmin'], a['bbox']['ymin']],
-                            [a['bbox']['xmax'], a['bbox']['ymin']],
-                            [a['bbox']['xmax'], a['bbox']['ymax']],
-                            [a['bbox']['xmin'], a['bbox']['ymax']]
-                           ],
-            'properties': {
-                'label': a['label']
-            },
-            'normalized': True,
-        }for a in annotations]
+
+    return [
+        {
+            "image": a["image"],
+            "coordinates": [
+                [a["bbox"]["xmin"], a["bbox"]["ymin"]],
+                [a["bbox"]["xmax"], a["bbox"]["ymin"]],
+                [a["bbox"]["xmax"], a["bbox"]["ymax"]],
+                [a["bbox"]["xmin"], a["bbox"]["ymax"]],
+            ],
+            "properties": {"label": a["label"]},
+            "normalized": True,
+        }
+        for a in annotations
+    ]
+
+
+def get_memory_usage():
+    """Get the memory usage of the current process
+
+    Returns:
+        float: Memory usage in MB
+    """
+
+    process = psutil.Process(os.getpid())
+    current_memory = process.memory_info().rss / 1024 / 1024
+    return current_memory
