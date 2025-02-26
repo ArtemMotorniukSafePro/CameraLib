@@ -83,7 +83,7 @@ class Projector:
             self.raster = rasterio.open(self.dem_path, "r")
             logger.info(f"Memory usage after opening DEM: {get_memory_usage():.2f} MB")
             logger.info("Reading DEM with self.raster.read(1)")
-            self.dem_data = self.raster.read(1, out_dtype=np.float16)
+            self.dem_data = self.raster.read(1, out_dtype=np.uint16)
             logger.info(f"Dtype after reading: {self.dem_data.dtype}")
             logger.info(f"Memory usage after reading DEM: {get_memory_usage():.2f} MB")
             logger.info("Computing valid mask")
