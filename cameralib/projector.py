@@ -1,7 +1,7 @@
-import json
 import logging
-import numpy as np
 import os
+
+import numpy as np
 import rasterio
 from scipy import ndimage
 
@@ -116,7 +116,7 @@ class Projector:
         Returns:
             list of tuples: longitude,latitude,elevation for each coordinate pair
         """
-        if not image in self.shots_map:
+        if image not in self.shots_map:
             raise InvalidArgError(f"Image {image} not found in {self.shots_path}")
 
         s = self.shots[self.shots_map[image]]
@@ -179,8 +179,15 @@ class Projector:
                     if ray_pt[2] <= pix_z:
                         # Hit
                         midpoint = (prev_pt + ray_pt) / 2.0
-                        lat, lon = get_latlon(self.raster, midpoint[0], midpoint[1])
-                        result = (lat, lon, pix_z)
+                        if getattr(self.raster, "crs", None) in (None, {}, ""):
+                            # Local coordinates
+                            local_result = (midpoint[1], midpoint[0], pix_z)
+                            print(f"Local coordinates: {local_result}")
+                            result = local_result
+                        else:
+                            # Geographic coordinates - unchanged
+                            lat, lon = get_latlon(self.raster, midpoint[0], midpoint[1])
+                            result = (lat, lon, pix_z)
                         break
 
                     prev_pt = ray_pt

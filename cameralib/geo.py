@@ -44,9 +44,6 @@ def raster_sample_z(rast_data, nodata, row, col, window=1, strategy='median'):
         raise OutOfBoundsError("Cannot read Z value: %s" % str(e))
 
 def get_utm_xyz(raster, rast_data, nodata, latitude, longitude, z_sample_window=1, z_sample_strategy='median'):
-    if raster.crs is None:
-        raise GeoError(f"{raster_path} does not have a CRS")
-        
     src_crs = CRS({'init':'EPSG:4326'})
     x, y = transform(src_crs, raster.crs, [longitude], [latitude])
     x = x[0]
@@ -58,9 +55,6 @@ def get_utm_xyz(raster, rast_data, nodata, latitude, longitude, z_sample_window=
     return x, y, z
 
 def get_latlon(raster, easting, northing):
-    if raster.crs is None:
-        raise GeoError(f"{raster_path} does not have a CRS")
-    
     dst = CRS({'init':'EPSG:4326'})
     longitude, latitude = transform(raster.crs, dst, [easting], [northing])
 
