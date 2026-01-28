@@ -45,9 +45,14 @@ def raster_sample_z(rast_data, nodata, row, col, window=1, strategy='median'):
 
 def get_utm_xyz(raster, rast_data, nodata, latitude, longitude, z_sample_window=1, z_sample_strategy='median'):
     src_crs = CRS({'init':'EPSG:4326'})
-    x, y = transform(src_crs, raster.crs, [longitude], [latitude])
-    x = x[0]
-    y = y[0]
+    if getattr(raster, "crs", None) in (None, {}, ""):
+        # No CRS metadata: assume coordinates already match raster local space.
+        x = longitude
+        y = latitude
+    else:
+        x, y = transform(src_crs, raster.crs, [longitude], [latitude])
+        x = x[0]
+        y = y[0]
 
     row, col = raster.index(x, y, op=round)
     z = raster_sample_z(rast_data, nodata, row, col, z_sample_window, z_sample_strategy)
